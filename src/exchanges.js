@@ -12,6 +12,7 @@ var events        = require('events');
 var util          = require('util');
 var common        = require('./common');
 var taskcluster   = require('taskcluster-client');
+var libUrls       = require('taskcluster-lib-urls');
 
 // wait 30 seconds before closing a channel, to allow pending operations to flush
 var CLOSE_DELAY = 30 * 1000;
@@ -298,10 +299,11 @@ Publisher.prototype.close = async function() {
  *
  * options:
  * {
+ *   name:               "serviceName of this service",
+ *   version:            "v1", // version of this API
  *   title:              "Title of documentation page",
  *   description:        "Description in markdown",
  *   exchangePrefix:     'prefix/'            // For all exchanges declared here
- *   schemaPrefix:       "http://schemas...", // Prefix for all schemas
  *   durableExchanges:   true || false // If exchanges are durable
  * }
  *
@@ -314,10 +316,12 @@ var Exchanges = function(options) {
   this._options = {
     exchangePrefix:       '',
     durableExchanges:     true,
-    schemaPrefix:         '',
   };
-  assert(options.title,       'title must be provided');
+  assert(options.name, 'name must be provided');
+  assert(options.version, 'version must be provided');
+  assert(options.title, 'title must be provided');
   assert(options.description, 'description must be provided');
+  assert(!options.schemaPrefix, 'schemaPrefix must not be provided');
   this.configure(options);
 };
 
@@ -371,11 +375,6 @@ Exchanges.prototype.declare = function(options) {
     assert(typeof options[key] === 'string', 'Option: \'' + key + '\' must be ' +
            'a string');
   });
-
-  // Prefix schemas if a prefix is declared
-  if (this._options.schemaPrefix) {
-    options.schema = this._options.schemaPrefix + options.schema;
-  }
 
   // Validate routingKey declaration
   assert(options.routingKey instanceof Array,
@@ -591,6 +590,7 @@ Exchanges.prototype.connect = async function(options) {
  * Return reference as JSON for the declared exchanges
  *
  * options: {
+ *   rootUrl:...,
  *   credentials: {
  *     username:        '...',   // Pulse username
  *   },
@@ -601,6 +601,7 @@ Exchanges.prototype.reference = function(options) {
   options = _.defaults({}, options || {}, this._options, {
     credentials:        {},
   });
+  assert(options.rootUrl, 'rootUrl must be provided');
 
   // Exchange prefix maybe prefixed additionally, if pulse credentials is given
   var exchangePrefix = options.exchangePrefix;
@@ -638,7 +639,7 @@ Exchanges.prototype.reference = function(options) {
           return _.pick(key, 'name', 'summary', 'constant',
             'multipleWords', 'required');
         }),
-        schema:         entry.schema,
+        schema:         libUrls.schema(options.rootUrl, options.name, `${options.version}/${entry.schema}`),
       };
     }),
   };
